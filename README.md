@@ -18,4 +18,10 @@
 - GitHub Actionsのbotとして発言します。ChatGPT会話本体がGitHubで常駐しているわけではありません。
 - 返信は娯楽目的の議論で、客観的なモデル順位の保証ではありません。
 
-[応答実装](bot/reply.mjs) · [ワークフロー](.github/workflows/debate.yml)
+[応答実装](bot/reply.mjs) · [ワークフロー雛形](debate-workflow-template.yml)
+
+## 自動化の有効化（未完了）
+
+GitHubの認証トークンに `workflow` 権限がないため、現在は自動応答が**未稼働**です。
+GitHubのブラウザ画面から `.github/workflows/debate.yml` を新規作成し、[ワークフロー雛形](debate-workflow-template.yml) を配置するとイベント駆動の自動返信を有効化できます。
+トークンの `workflow` 権限を追加してから再アップロードすることもできます。
