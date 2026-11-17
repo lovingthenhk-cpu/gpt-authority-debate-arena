@@ -2,43 +2,58 @@
 
 **This is a scoring protocol proposal, not evidence that anyone has won.**
 
-## Registration
-Before contestants answer, an independent referee pre-registers the target
-task population, sampling and exclusion criteria, ground-truth adjudication,
-shared instructions/tool access and equal resource budget. Select 100 or more
-hidden, nontrivial, objectively decidable binary propositions. Neither contestant
-may add self-chosen easy tasks. Seal the questions until submissions begin.
-Commit answer hashes before the truth is revealed; preserve all raw answers.
+## Registration before viewing answers
+An independent referee preregisters a clearly scoped target population, sampling
+and exclusion criteria, objectively adjudicated binary answer keys, common prompts
+and tool access, equal CPU/time/resource budgets, and a specific pair of contestants.
+The fixed held-out set must have at least 100 nontrivial tasks from **at least 30
+independently selected event clusters**. Predeclare which tasks share a latent
+cause or underlying outcome: 100 paraphrases about one event count as **one
+cluster**, not 100 independent trials. Cluster IDs are supplied in the sealed
+answer-key JSON. No contestant-selected easy tasks or post-hoc deletions.
+The referee, not code, must justify genuine between-cluster independence; 30
+declared labels do not magically imply 30 independent random outcomes.
+
+Commit predictions' hashes with verifiable timestamps BEFORE revealing the
+truth. Retain raw contestant answers, exact sampling code/seed, and all failures.
 
 ## Scoring
-Each participant assigns probability p in [0,1] to each identical statement.
-The outcome y is either zero or one. Score mean squared error (p-y)^2:
-the mean Brier loss; lower is better. Every question counts; p=0.5 expresses
-maximum uncertainty. The included standard-library scorer rejects omissions,
-duplicates, nonfinite answers, and mismatched task sets.
+Each contestant provides p in [0,1] for every identical binary proposition;
+the ground truth y is 0 or 1. Evaluate Brier loss (p-y)^2. Average losses WITHIN
+each independent event cluster, then weight clusters EQUALLY, so repetitive
+paraphrases cannot determine a win. Pair the two cluster losses on identical
+events. A 5000-draw fixed-seed paired percentile bootstrap (seed 20261117)
+produces a 95% interval for mean cluster loss(A) minus mean cluster loss(B).
+A wins only if the upper interval endpoint is less than -0.01; B wins only if
+the lower bound is greater than +0.01; otherwise the output is UNDECIDED.
 
-Pairwise inference uses 5000 paired bootstrap resamples with fixed seed 20261117.
-A wins if the upper 95% percentile interval for mean loss(A)-loss(B)
-is below -0.01; B wins if the lower bound exceeds 0.01; otherwise the
-result is 'undecided'. This is an explicitly precommitted exploratory method,
-not a claim of universal 5% false-positive control for arbitrary correlated
-or non-random tasks. An independent judge must accept the inference rule
-and justify task sampling before the first legitimate round.
+This is a **fixed-sample paired two-contestant** exploratory decision rule.
+A bootstrap percentile interval is not a universal 5% false-positive guarantee
+when event clusters are themselves correlated, selected nonrandomly, or
+the result is checked repeatedly. Specify the sample size and single time of
+evaluation before the round. Do not stop early when the result looks good.
 
-## Limitations and verification
-The output compares one *pair of sessions* on a particular binary-question
-distribution. Model-level differences require many runs counterbalancing
-prompts/context/tools. Neither this artifact nor a single tournament establishes
-global superiority. External referee must authenticate contestant identity,
-timestamp/hashes, trial budgets, and preregistration; the program does not.
+## No unadjusted 8-way championship
+The implementation intentionally accepts **exactly two preregistered entrants**
+and cannot score a field of eight or select the best after looking at results.
+A future multi-entrant tournament must preregister entrant set, each comparison,
+familywise error control (such as Holm adjustment), and a valid rule for
+sequential looks (or forbid them). Do not naively declare a winner after 28
+unadjusted pairwise 5% tests; leaderboards are not statistical proof.
 
-CLI:
+## Scope
+A single round compares two *sessions* on the selected binary-task population.
+A model-level comparison requires repeated independent sessions with counterbalanced
+prompts, tool conditions, and context; universal GPT authority is not established.
+No real blind round has been performed.
+
+## Inputs and tests
   python3 tools/score_brier_round.py --predictions predictions.json --truth truth.json
 
-Prediction JSON schema: round_id plus contestants object with exactly
-two named contestant objects mapping identical task IDs to probabilities.
-Truth JSON schema: same round_id and answers object mapping task IDs to 0/1.
-Default minimum task count: 100. An optional --min-items is only for demos.
+Predictions JSON: round_id, plus contestants map containing two names, each mapping
+all task IDs to probabilities. Truth JSON: same round_id, answers map of all task
+IDs to 0/1, clusters map of **all identical task IDs** to event-cluster strings.
+Default minimums: 100 questions, 30 declared event clusters. Lower minimums are
+only for isolated demonstrations, never a legitimate scored round.
 
-Tests:
   python3 -m unittest discover -s tests -p 'test_brier_round.py' -v
