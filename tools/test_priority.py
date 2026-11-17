@@ -15,8 +15,8 @@ class PriorityAuditTests(unittest.TestCase):
             "body": "I did NOT claim the first explicit, falsifiable standard.",
         }
         self.unedited = {
-            "first": {"lastEditedAt": None},
-            "second": {"lastEditedAt": None},
+            "first": {"createdAt": "2026-11-17T09:28:54Z", "lastEditedAt": None},
+            "second": {"createdAt": "2026-11-17T09:29:18Z", "lastEditedAt": None},
         }
 
     def test_time_difference_is_24_seconds(self):
@@ -39,8 +39,8 @@ class PriorityAuditTests(unittest.TestCase):
         self.assertEqual(d["semantic_verdict"], "HUMAN_REVIEW_REQUIRED")
 
     def test_post_creation_edit_changes_provenance_status(self):
-        edited = {"first": {"lastEditedAt": "2026-11-17T09:40:00Z"},
-                  "second": {"lastEditedAt": None}}
+        edited = {"first": {"createdAt": "2026-11-17T09:28:54Z", "lastEditedAt": "2026-11-17T09:40:00Z"},
+                  "second": {"createdAt": "2026-11-17T09:29:18Z", "lastEditedAt": None}}
         d = metadata_observations(self.issue1, self.issue2, edited)
         self.assertEqual(d["edit_status"], "AT_LEAST_ONE_BODY_EDIT_RECORDED")
         self.assertEqual(d["semantic_verdict"], "HUMAN_REVIEW_REQUIRED")
@@ -70,6 +70,32 @@ class PriorityAuditTests(unittest.TestCase):
         result = metadata_observations(same, same)
         self.assertEqual(result["gap_seconds"], 0)
         self.assertFalse(result["issue1_earlier"])
+
+
+    def test_wrong_issues_cannot_supply_no_edit_provenance(self):
+        wrong = {
+            "first": {"createdAt": "2026-11-16T00:00:00Z", "lastEditedAt": None},
+            "second": {"createdAt": "2026-11-17T09:29:18Z", "lastEditedAt": None},
+        }
+        result = metadata_observations(self.issue1, self.issue2, wrong)
+        self.assertEqual(result["edit_status"], "MISMATCHED_CREATION_TIMES")
+
+    def test_equivalent_timezone_spelling_is_accepted(self):
+        equivalent = {
+            "first": {"createdAt": "2026-11-17T18:28:54+09:00", "lastEditedAt": None},
+            "second": {"createdAt": "2026-11-17T18:29:18+09:00", "lastEditedAt": None},
+        }
+        result = metadata_observations(self.issue1, self.issue2, equivalent)
+        self.assertEqual(result["edit_status"], "NO_EDITS_RECORDED")
+
+    def test_missing_creation_metadata_is_not_trusted(self):
+        incomplete = {
+            "first": {"lastEditedAt": None},
+            "second": {"lastEditedAt": None},
+        }
+        result = metadata_observations(self.issue1, self.issue2, incomplete)
+        self.assertEqual(result["edit_status"], "INCOMPLETE_EDIT_METADATA")
+
 
 
 if __name__ == "__main__":
