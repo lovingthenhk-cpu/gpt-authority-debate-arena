@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Offline negative controls for check_priority.py. Run: python3 -m unittest -v test_priority.py"""
+import unittest
+from check_priority import metadata_observations, evidence_lines
+
+
+class PriorityAuditTests(unittest.TestCase):
+    def setUp(self):
+        self.issue1 = {
+            "created_at": "2026-11-17T09:28:54Z",
+            "body": "No defeat condition, rubric, or counterexample exists here.",
+        }
+        self.issue2 = {
+            "created_at": "2026-11-17T09:29:18Z",
+            "body": "I did NOT claim the first explicit, falsifiable standard.",
+        }
+        self.unedited = {
+            "first": {"lastEditedAt": None},
+            "second": {"lastEditedAt": None},
+        }
+
+    def test_time_difference_is_24_seconds(self):
+        d = metadata_observations(self.issue1, self.issue2, self.unedited)
+        self.assertEqual(d["gap_seconds"], 24)
+        self.assertTrue(d["issue1_earlier"])
+        self.assertEqual(d["edit_status"], "NO_EDITS_RECORDED")
+
+    def test_negated_bodies_do_not_get_semantic_verdict(self):
+        d = metadata_observations(self.issue1, self.issue2, self.unedited)
+        self.assertEqual(d["semantic_verdict"], "HUMAN_REVIEW_REQUIRED")
+        # The dangerous substring check DOES match negations; the metadata
+        # validator must never draw a semantic conclusion from this list.
+        self.assertTrue(evidence_lines(self.issue1["body"], ["rubric"]))
+        self.assertTrue(evidence_lines(self.issue2["body"], ["first explicit"]))
+
+    def test_missing_edit_history_keeps_provenance_unknown(self):
+        d = metadata_observations(self.issue1, self.issue2)
+        self.assertEqual(d["edit_status"], "NOT_CHECKED")
+        self.assertEqual(d["semantic_verdict"], "HUMAN_REVIEW_REQUIRED")
+
+    def test_post_creation_edit_changes_provenance_status(self):
+        edited = {"first": {"lastEditedAt": "2026-11-17T09:40:00Z"},
+                  "second": {"lastEditedAt": None}}
+        d = metadata_observations(self.issue1, self.issue2, edited)
+        self.assertEqual(d["edit_status"], "AT_LEAST_ONE_BODY_EDIT_RECORDED")
+        self.assertEqual(d["semantic_verdict"], "HUMAN_REVIEW_REQUIRED")
+
+    def test_reversed_creation_order(self):
+        d = metadata_observations(self.issue2, self.issue1)
+        self.assertFalse(d["issue1_earlier"])
+        self.assertEqual(d["gap_seconds"], -24)
+
+
+if __name__ == "__main__":
+    unittest.main()
