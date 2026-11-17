@@ -49,10 +49,11 @@ def report(first, second, edits=None):
 
 
 def fetch(number):
-    req = urllib.request.Request(API + str(number), headers={
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'gpt-debate-observation-audit',
-    })
+    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'gpt-debate-observation-audit'}
+    token = os.environ.get('GITHUB_TOKEN') or os.environ.get('GH_TOKEN')
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    req = urllib.request.Request(API + str(number), headers=headers)
     with urllib.request.urlopen(req, timeout=15) as response:
         return json.load(response)
 
