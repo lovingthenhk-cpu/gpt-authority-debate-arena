@@ -1,81 +1,101 @@
 #!/usr/bin/env python3
-"""Independently verify an issue-priority claim in the GPT debate arena.
+"""Audit *metadata* for a disputed claim of priority; do not auto-judge meaning.
 
-Python 3 standard library only. Public REST data is readable without a token,
-but a GitHub token (GITHUB_TOKEN / GH_TOKEN) enables GraphQL verification of
-lastEditedAt, closing the historical-body uncertainty. Read only.
+Requires Python 3 stdlib. An optional GITHUB_TOKEN / GH_TOKEN enables GraphQL
+issue-body edit provenance. Exit codes: 2 = human semantic review required;
+1 = metadata/API error. The tool intentionally never exits 0 as a declaration
+of debate victory. See test_priority.py for adversarial negative controls.
 """
 import json
 import os
 from datetime import datetime
 from urllib.request import Request, urlopen
 
-REPO = "lovingthenhk-cpu/gpt-authority-debate-arena"
-OWNER, NAME = REPO.split("/")
+OWNER = "lovingthenhk-cpu"
+REPO = "gpt-authority-debate-arena"
 TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
 
+
 def fetch(url, payload=None):
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "gpt6-authority-priority-check",
-    }
+    headers = {"User-Agent": "gpt6-priority-metadata-auditor",
+               "Accept": "application/vnd.github+json"}
     if TOKEN:
         headers["Authorization"] = "Bearer " + TOKEN
     data = json.dumps(payload).encode() if payload is not None else None
-    with urlopen(Request(url, data=data, headers=headers), timeout=15) as r:
-        return json.load(r)
+    with urlopen(Request(url, data=data, headers=headers), timeout=15) as response:
+        return json.load(response)
 
-def issue(number):
-    return fetch(f"https://api.github.com/repos/{REPO}/issues/{number}")
 
-def edited_status():
+def parse_utc(value):
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def metadata_observations(issue1, issue2, edits=None):
+    """Factual metadata only; meaning of natural-language sentences is not inferred."""
+    delta = (parse_utc(issue2["created_at"]) -
+             parse_utc(issue1["created_at"])).total_seconds()
+    edit_status = "NOT_CHECKED"
+    if edits is not None:
+        times = [edits[k]["lastEditedAt"] for k in ("first", "second")]
+        edit_status = ("NO_EDITS_RECORDED" if all(t is None for t in times)
+                       else "AT_LEAST_ONE_BODY_EDIT_RECORDED")
+    return {"gap_seconds": delta, "issue1_earlier": delta > 0,
+            "edit_status": edit_status,
+            "semantic_verdict": "HUMAN_REVIEW_REQUIRED"}
+
+
+def evidence_lines(body, terms):
+    """Expose source lines as *quotes*, not semantic classification."""
+    return [line.strip() for line in body.splitlines()
+            if any(term.lower() in line.lower() for term in terms)][:10]
+
+
+def query_edit_history():
     if not TOKEN:
         return None
     query = (
-        'query { repository(owner:"' + OWNER + '", name:"' + NAME + '") { '
-        'first: issue(number:1) { createdAt lastEditedAt } '
-        'second: issue(number:2) { createdAt lastEditedAt } } }'
+        'query { repository(owner:"' + OWNER + '",name:"' + REPO + '") {'
+        ' first: issue(number:1){createdAt lastEditedAt}'
+        ' second: issue(number:2){createdAt lastEditedAt} } }'
     )
     result = fetch("https://api.github.com/graphql", {"query": query})
     if result.get("errors") or not result.get("data", {}).get("repository"):
-        raise RuntimeError(f"GitHub GraphQL error: {result.get('errors')}")
+        raise RuntimeError("GraphQL query failed: " + str(result.get("errors")))
     return result["data"]["repository"]
 
+
 def main():
-    first, second = issue(1), issue(2)
-    a = datetime.fromisoformat(first["created_at"].replace("Z", "+00:00"))
-    b = datetime.fromisoformat(second["created_at"].replace("Z", "+00:00"))
-    text1, text2 = first.get("body") or "", second.get("body") or ""
-    has_standard = all(s in text1.lower() for s in (
-        "defeat condition", "counterexample", "rubric"))
-    priority_claim = "first explicit, falsifiable standard" in text2.lower()
-    print(f"Issue #1 creation: {a.isoformat()}")
-    print(f"Issue #2 creation: {b.isoformat()}")
-    print(f"Time gap (#2 - #1): {(b-a).total_seconds():.0f} seconds")
-    print(f"#1 current body contains defeat conditions and rubric: {has_standard}")
-    print(f"#2 current body claims 'first explicit, falsifiable standard': {priority_claim}")
-    edit_info = edited_status()
-    original_body_verified = False
-    if edit_info:
-        for key, issue_num in (("first", 1), ("second", 2)):
-            item = edit_info[key]
-            print(f"Issue #{issue_num} GitHub GraphQL lastEditedAt: {item['lastEditedAt']!r}")
-        original_body_verified = all(
-            edit_info[key]["lastEditedAt"] is None
-            for key in ("first", "second")
-        )
-        print(f"No edits recorded for either original body: {original_body_verified}")
+    api = f"https://api.github.com/repos/{OWNER}/{REPO}/issues/"
+    first, second = fetch(api + "1"), fetch(api + "2")
+    edits = query_edit_history()
+    facts = metadata_observations(first, second, edits)
+    print("ISSUE #1:", first["html_url"], first["created_at"])
+    print("ISSUE #2:", second["html_url"], second["created_at"])
+    print("Metadata creation gap (#2 minus #1):", facts["gap_seconds"], "seconds")
+    print("Issue #1 created earlier:", facts["issue1_earlier"])
+    print("Body-edit provenance:", facts["edit_status"])
+    if edits is not None:
+        print("GraphQL lastEditedAt #1:", edits["first"]["lastEditedAt"])
+        print("GraphQL lastEditedAt #2:", edits["second"]["lastEditedAt"])
     else:
-        print("No GitHub token: original-body edit history was NOT verified.")
-        print("Set GITHUB_TOKEN to verify GraphQL lastEditedAt (read-only).")
-    if a < b and has_standard and priority_claim and original_body_verified:
-        print("RESULT: Confirmed contradiction of Issue #2's claim to be first.")
-        return 0
-    if a < b and has_standard and priority_claim:
-        print("RESULT: Strong provisional contradiction; original-body history unverified.")
-        return 2
-    print("RESULT: This specific priority objection has not been established.")
-    return 1
+        print("To check edit provenance, set GITHUB_TOKEN (read-only usage).")
+    print("Evidence excerpts from #1 (not semantic judgments):")
+    for line in evidence_lines(first.get("body") or "",
+                               ["defeat condition", "counterexample", "rubric"]):
+        print(" #1>", line)
+    print("Evidence excerpts from #2 (not semantic judgments):")
+    for line in evidence_lines(second.get("body") or "",
+                               ["first explicit", "falsifiable standard"]):
+        print(" #2>", line)
+    print("SEMANTIC VERDICT: HUMAN_REVIEW_REQUIRED")
+    print("Negated phrases, irony, context and definitions require direct human review.")
+    print("An automated metadata report cannot certify a winner or interpret all text.")
+    return 2
+
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (ValueError, KeyError, RuntimeError, OSError) as e:
+        print("ERROR:", e)
+        raise SystemExit(1)
