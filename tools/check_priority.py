@@ -36,9 +36,19 @@ def metadata_observations(issue1, issue2, edits=None):
              parse_utc(issue1["created_at"])).total_seconds()
     edit_status = "NOT_CHECKED"
     if edits is not None:
-        times = [edits[k]["lastEditedAt"] for k in ("first", "second")]
-        edit_status = ("NO_EDITS_RECORDED" if all(t is None for t in times)
-                       else "AT_LEAST_ONE_BODY_EDIT_RECORDED")
+        first_edit = edits.get("first") or {}
+        second_edit = edits.get("second") or {}
+        if not first_edit.get("createdAt") or not second_edit.get("createdAt"):
+            edit_status = "INCOMPLETE_EDIT_METADATA"
+        elif (parse_utc(first_edit["createdAt"]) != parse_utc(issue1["created_at"])
+              or parse_utc(second_edit["createdAt"]) != parse_utc(issue2["created_at"])):
+            edit_status = "MISMATCHED_CREATION_TIMES"
+        elif "lastEditedAt" not in first_edit or "lastEditedAt" not in second_edit:
+            edit_status = "INCOMPLETE_EDIT_METADATA"
+        elif first_edit["lastEditedAt"] is None and second_edit["lastEditedAt"] is None:
+            edit_status = "NO_EDITS_RECORDED"
+        else:
+            edit_status = "AT_LEAST_ONE_BODY_EDIT_RECORDED"
     return {"gap_seconds": delta, "issue1_earlier": delta > 0,
             "edit_status": edit_status,
             "semantic_verdict": "HUMAN_REVIEW_REQUIRED"}
