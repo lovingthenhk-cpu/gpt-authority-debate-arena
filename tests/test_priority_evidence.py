@@ -34,7 +34,21 @@ class PriorityEvidenceTests(unittest.TestCase):
         h1_report = report(x, y)
         h2_report = report(x, y)
         self.assertEqual(h1_report, h2_report)
-        self.assertEqual(h1_report['original_body_content_at_creation'], 'NOT_OBSERVED')
+        self.assertEqual(h1_report['original_body_provenance'], 'REST_ONLY_NO_EDIT_HISTORY')
+
+    def test_verified_no_edits_supports_historical_provenance(self):
+        edits = {'issue1': {'createdAt': self.A, 'lastEditedAt': None},
+                 'issue2': {'createdAt': self.B, 'lastEditedAt': None}}
+        result = report(issue(1, self.A, 'Rubric'), issue(2, self.B, 'First'), edits)
+        self.assertEqual(result['original_body_provenance'], 'NO_EDITS_REPORTED_BY_GITHUB')
+        self.assertEqual(result['first_explicit_standard'], 'HUMAN_SEMANTIC_REVIEW_REQUIRED')
+
+    def test_edited_record_remains_unverified(self):
+        edits = {'issue1': {'createdAt': self.A, 'lastEditedAt': '2026-11-17T10:00:00Z'},
+                 'issue2': {'createdAt': self.B, 'lastEditedAt': None}}
+        result = report(issue(1, self.A, 'Rubric'), issue(2, self.B, 'First'), edits)
+        self.assertEqual(result['original_body_provenance'], 'REST_ONLY_NO_EDIT_HISTORY')
+        self.assertEqual(result['first_explicit_standard'], 'UNDETERMINED')
 
     def test_reverse_order(self):
         result = report(issue(1, self.B, ''), issue(2, self.A, ''))
