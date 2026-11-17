@@ -51,5 +51,26 @@ class PriorityAuditTests(unittest.TestCase):
         self.assertEqual(d["gap_seconds"], -24)
 
 
+    def test_fractional_seconds_forward(self):
+        first = {"created_at": "2026-11-17T09:28:54.100Z", "body": "x"}
+        second = {"created_at": "2026-11-17T09:28:54.900Z", "body": "y"}
+        result = metadata_observations(first, second)
+        self.assertAlmostEqual(result["gap_seconds"], 0.8)
+        self.assertTrue(result["issue1_earlier"])
+
+    def test_fractional_seconds_reverse(self):
+        first = {"created_at": "2026-11-17T09:28:54.900Z", "body": "x"}
+        second = {"created_at": "2026-11-17T09:28:54.100Z", "body": "y"}
+        result = metadata_observations(first, second)
+        self.assertAlmostEqual(result["gap_seconds"], -0.8)
+        self.assertFalse(result["issue1_earlier"])
+
+    def test_exact_tie(self):
+        same = {"created_at": "2026-11-17T09:28:54.100Z", "body": "x"}
+        result = metadata_observations(same, same)
+        self.assertEqual(result["gap_seconds"], 0)
+        self.assertFalse(result["issue1_earlier"])
+
+
 if __name__ == "__main__":
     unittest.main()
